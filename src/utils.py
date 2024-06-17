@@ -1,3 +1,4 @@
+from scipy.stats import norm
 import numpy as np
 from scipy.stats import multivariate_normal
 
@@ -28,6 +29,14 @@ def predict_particles(particles, std):
 
 def calculate_rmse(estimations, true_values):
     return np.sqrt(((estimations - true_values) ** 2).mean(axis=0))
+
+def read_data(file_path):
+    data = []
+    with open(file_path, 'r') as file:
+        for line in file:
+            point = tuple(map(float, line.strip().split(', ')))
+            data.append(point)
+    return data
 
 def systematic_resample(weights):
     N = len(weights)

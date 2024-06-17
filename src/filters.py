@@ -1,7 +1,44 @@
 import numpy as np
+import scipy
 from filterpy.kalman import KalmanFilter, UnscentedKalmanFilter, MerweScaledSigmaPoints
 from filterpy.common import Q_discrete_white_noise
+from filterpy.monte_carlo import systematic_resample
 from scipy.stats import multivariate_normal
+
+
+def configure_kalman_filter(gps_data, vo_data):
+    gps_data = np.array(gps_data)
+    vo_data = np.array(vo_data)
+
+    initial_state = gps_data[0]
+
+    initial_velocity = np.array([0, 0, 0])
+
+    kf = KalmanFilter(dim_x=6, dim_z=3)
+
+    kf.R = np.eye(3) * 0.1
+
+    dt = 1
+    kf.Q = np.eye(6) * 0.1
+
+    kf.F = np.array([[1, 0, 0, dt, 0, 0],
+                     [0, 1, 0, 0, dt, 0],
+                     [0, 0, 1, 0, 0, dt],
+                     [0, 0, 0, 1, 0, 0],
+                     [0, 0, 0, 0, 1, 0],
+                     [0, 0, 0, 0, 0, 1]])
+
+    kf.H = np.array([[1, 0, 0, 0, 0, 0],
+                     [0, 1, 0, 0, 0, 0],
+                     [0, 0, 1, 0, 0, 0]])
+
+    kf.x[:3] = initial_state
+    kf.x[3:] = initial_velocity
+
+    kf.P = np.eye(6) * 1000
+
+    return kf
+
 
 def create_kalman_filter(dim_x, dim_z, dt):
     kf = KalmanFilter(dim_x=6, dim_z=3)
@@ -14,11 +51,12 @@ def create_kalman_filter(dim_x, dim_z, dt):
     kf.H = np.array([[1, 0, 0, 0, 0, 0],
                      [0, 1, 0, 0, 0, 0],
                      [0, 0, 1, 0, 0, 0]])
+
     kf.x = np.array([0., 0., 0., 0., 0., 0.])
     kf.P *= 500.
-    kf.R *= np.array([[1.0, 0.0, 0.0],
-                      [0.0, 1.0, 0.0],
-                      [0.0, 0.0, 1.0]])
+    kf.R *= np.array([[.5, 0.0, 0.0],
+                      [0.0, .5, 0.0],
+                      [0.0, 0.0, .5]])
     kf.Q[-1, -1] *= 0.01
     kf.Q[3:, 3:] = Q_discrete_white_noise(dim=3, dt=1, var=0.01)
     return kf
@@ -43,12 +81,19 @@ def resample_from_index(particles, weights, indexes):
     weights.fill(1.0 / len(weights))
 
 
-def create_ukf(dim_x, dim_z, dt, hx, fx):
-    points = MerweScaledSigmaPoints(n=dim_x, alpha=.1, beta=2., kappa=0)
+def create_ukf(dim_x, dim_z, dt, hx, fx, gps_data):
+    points = MerweScaledSigmaPoints(n=dim_x, alpha=.01, beta=.01, kappa=0)
+
     ukf = UnscentedKalmanFilter(dim_x=dim_x, dim_z=dim_z, dt=dt, hx=hx, fx=fx, points=points)
-    ukf.x = np.zeros(dim_x)
-    ukf.P *= 10
-    ukf.R = np.diag([1.0, 1.0, 1.0]) * 0.01
-    ukf.Q = Q_discrete_white_noise(dim=3, dt=dt, var=0.01, block_size=2)
+
+    ukf.x = np.concatenate((gps_data[1], np.zeros(3)))
+
+    ukf.P *= 0.1
+
+    ukf.R = np.eye(3) * 0.1
+
+    q = Q_discrete_white_noise(dim=3, dt=1, var=0.1)
+    ukf.Q = np.eye(6)
+    ukf.Q[3:, 3:] = q
 
     return ukf
